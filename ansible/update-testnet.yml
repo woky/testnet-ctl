@@ -1,0 +1,104 @@
+- hosts: testnet
+  strategy: free # important to unblock ports on bootstrap!
+  tasks:
+    - name: Stop node
+      docker_container:
+        name: rnode
+        state: absent
+
+    - name: Clean data
+      file: state=absent path=/var/lib/rnode
+      when: clean_data
+
+    - name: Create directories
+      file: state=directory path={{ item }}
+      with_items:
+        - /var/lib/rnode
+        - /var/lib/rnode/genesis
+        - /var/lib/rnode-static
+        - /var/lib/rheapdumps
+
+    - name: Download files
+      get_url:
+        url: '{{ item.url }}'
+        dest: '{{ item.dest}}'
+      with_items:
+        - url: '{{ bonds_file_url }}'
+          dest: /var/lib/rnode-static/bonds-20-others.txt
+        - url: '{{ wallets_file_url }}'
+          dest: /var/lib/rnode-static/wallets.txt
+      ignore_errors: true
+
+    - name: Copy files
+      copy: src={{ item }} dest=/var/lib/rnode-static/{{ item | basename }}
+      with_fileglob:
+        - '{{ data_dir }}/host-files/{{ inventory_hostname }}/*'
+
+    - name: Write Testnet bonds
+      lineinfile:
+        state: present
+        create: yes
+        insertafter: EOF
+        dest: /var/lib/rnode-static/bonds-10-testnet.txt
+        line: '{{ item.pub_key }} {{ item.bond_amount }}'
+      with_items: '{{ testnet_bonds }}'
+
+    - name: Create bonds.txt
+      shell: |
+        cat /var/lib/rnode-static/bonds-*.txt >/var/lib/rnode/genesis/bonds.txt
+
+    - name: Block node ports
+      when: is_bootstrap
+      shell: |
+        set -e
+        if ! iptables -L rnode_init >/dev/null; then
+          iptables -N rnode_init
+          iptables -I INPUT 1 -p tcp -m multiport --dports 40400,40404 -j rnode_init
+        fi
+        iptables -A rnode_init -p tcp -m conntrack --ctstate ESTABLISHED -j ACCEPT
+        iptables -A rnode_init -p tcp -j REJECT --reject-with tcp-reset
+
+    - name: Start node
+      docker_container:
+        name: rnode
+        image: rchain/rnode:{{ rnode_release }}
+        pull: yes
+        recreate: yes
+        detach: yes
+        network_mode: host
+        volumes:
+          - /var/lib/rnode:/var/lib/rnode
+          - /var/lib/rheapdumps:/var/lib/rheapdumps
+          - /var/lib/rnode-static:/var/lib/rnode-static:ro
+          - /opt/rdoctor:/opt/rdoctor:ro
+        env:
+          RDOCTOR_APIKEY: '{{ rdoctor_apikey }}'
+          _JAVA_OPTIONS: >
+            -XX:+HeapDumpOnOutOfMemoryError
+            -XX:HeapDumpPath=/var/lib/rheapdumps/{{ testnet_id }}.hprof
+            -Xms8g -Xmx14g
+            {{ rnode_java_opts | default("") }}
+        entrypoint:
+          - /opt/rdoctor/rdoctor
+          - /opt/docker/bin/rnode
+          - -p
+          - docker
+          - -c
+          - /var/lib/rnode-static/rnode.conf
+          - run
+        command: '{{ rnode_run_args | default("") }}'
+    - name: Wait for approved block
+      shell: |
+        height="$(docker exec rnode ./bin/rnode show-blocks | sed -n '/^count: /{s///;p;q}')"
+        test -n "$height" -a "$height" -gt 0
+      register: result
+      until: result.rc == 0
+      delay: 10
+      retries: 50
+
+    - name: Unblock node ports
+      when: is_bootstrap
+      shell: |
+        iptables -F rnode_init
+
+# vim:ft=yaml.ansible:

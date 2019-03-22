@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+
+hostname=${PSSH_HOST%%.*}
+
+for f in *.in; do
+	sed \
+		-e "s|@@HOSTNAME@@|$hostname|g" \
+		$f >${f%.in}
+done
+
+cp collectd.conf /etc/collectd/
+systemctl restart collectd
+
+if [[ ! -f /opt/rdoctor/rdoctor ]]; then
+	mkdir -p /opt/rdoctor
+	curl -sfSL https://build.rchain-dev.tk/misc/rdoctor/latest/linux.amd64/rdoctor \
+		>/opt/rdoctor/rdoctor
+	chmod +x /opt/rdoctor/rdoctor
+fi
+
+if ! grep -Fq specops@build ~/.ssh/authorized_keys; then
+	mkdir -p -m700 ~/.ssh
+	cat specops-sshkey.pub >>~/.ssh/authorized_keys
+fi

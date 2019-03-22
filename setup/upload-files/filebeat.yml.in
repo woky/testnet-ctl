@@ -1,0 +1,20 @@
+name: @@HOSTNAME@@
+tags: [ testnet, testnet1 ]
+
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      templates:
+        - condition:
+            contains:
+              docker.container.image: rchain/rnode
+          config:
+            - type: docker
+              containers.ids:
+                - "${data.docker.container.id}"
+
+output.elasticsearch:
+  hosts: ["rdoctor.c.developer-222401.internal:9200"]
+  index: rdoctor
+
+setup.template.enabled: false

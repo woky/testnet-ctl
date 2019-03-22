@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+
+import sys, os
+import json
+from pathlib import Path
+
+import yaml
+
+if len(sys.argv) > 1:
+    os.chdir(sys.argv[1])
+
+bootstrap_url = None
+
+for node in yaml.safe_load(sys.stdin.read()):
+    url = 'rnode://{}@{}?protocol={}&discovery={}'.format(
+        node['node_id'], node['hostname'], 40400, 40404)
+    if not bootstrap_url:
+        bootstrap_url = url
+    rnode_conf = {
+        'rnode': {
+            'casper': {
+                'validator-private-key': node['key'],
+                'validator-public-key': node['pub_key'],
+                'wallets-file': '/var/lib/rnode-static/wallets.txt',
+            },
+            'server': {
+                'host': node['hostname'],
+                'standalone': bootstrap_url == url,
+                'bootstrap': bootstrap_url,
+                'upnp': False,
+                'port': 40400,
+                'port-kademlia': 40404,
+                'tls': {
+                    'key': '/var/lib/rnode-static/node.key.pem',
+                    'certificate': '/var/lib/rnode-static/node.certificate.pem',
+                },
+            },
+            'grpc': {
+                'port-external': 40401,
+            }
+        }
+    }
+
+    node_dir = Path(node['hostname'])
+    node_dir.mkdir(exist_ok=True)
+    (node_dir / 'rnode.conf').write_text(json.dumps(rnode_conf, indent=4))
+    (node_dir / 'node.key.pem').write_text(node['tls_key'])
+    (node_dir / 'node.certificate.pem').write_text(node['tls_cert'])

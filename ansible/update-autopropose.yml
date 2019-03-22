@@ -1,0 +1,34 @@
+- hosts: testnet
+  strategy: free # important to unblock ports on bootstrap!
+  tasks:
+    - name: Copy files
+      copy:
+        src: '{{ code_dir }}/scripts/autopropose'
+        dest: /var/lib/rnode-static/autopropose
+        mode: preserve
+
+    - name: Write validator name
+      shell: |
+        echo {{ inventory_hostname }} >/var/lib/rnode-static/hostname
+
+    - name: Start autopropose
+      docker_container:
+        name: autopropose
+        image: rchain/rnode:{{ rnode_release }}
+        pull: yes
+        recreate: yes
+        detach: yes
+        network_mode: host
+        volumes:
+          - /var/lib/rnode-static:/var/lib/rnode-static:ro
+        env:
+          propose_mode: '{{ propose_mode }}'
+          propose_validators: '{{ propose_validators }}'
+          propose_contract: '{{ propose_contract }}'
+          propose_delay_max: '{{ propose_delay_max }}'
+          propose_delay_min: '{{ propose_delay_min }}'
+          _JAVA_OPTIONS: -Xms4g -Xmx6g
+        entrypoint:
+          - /var/lib/rnode-static/autopropose
+
+# vim:ft=yaml.ansible:

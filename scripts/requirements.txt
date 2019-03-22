@@ -1,0 +1,8 @@
+#pyjq
+#deepmerge
+pyyaml>=5.1
+pyhocon
+pynacl
+pycryptodome
+eth-hash[pycryptodome]
+cryptography

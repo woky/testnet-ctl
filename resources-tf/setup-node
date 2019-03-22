@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+
+exec &> >(tee -a >/tmp/setup-node.log)
+date -Is
+
+apt update
+apt install -y --no-install-recommends \
+    apt-transport-https \
+    gnupg2 \
+    software-properties-common \
+    python \
+    collectd
+
+curl -sSfL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+echo 'deb [arch=amd64] https://download.docker.com/linux/ubuntu cosmic stable' \
+    >/etc/apt/sources.list.d/docker-ce.list
+
+curl -sSfL https://artifacts.elastic.co/GPG-KEY-elasticsearch | apt-key add -
+echo 'deb https://artifacts.elastic.co/packages/6.x/apt stable main' \
+    >/etc/apt/sources.list.d/elastic.list
+
+apt update
+apt install -y --no-install-recommends \
+    docker-ce \
+    python-docker \
+    python-backports.ssl-match-hostname \
+    filebeat

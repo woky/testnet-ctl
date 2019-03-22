@@ -1,0 +1,16 @@
+#!/bin/zsh -e
+
+code_dir=$0:h/..
+code_dir=$code_dir:A
+
+export PATH="/usr/local/bin:$PATH"
+ansible-playbook \
+	-i $code_dir/hosts \
+	-e code_dir=$code_dir \
+	-e rnode_release=$RD_OPTION_RNODE_RELEASE \
+	-e propose_mode=$RD_OPTION_PROPOSE_MODE \
+	-e propose_validators="$RD_OPTION_PROPOSE_VALIDATORS" \
+	-e propose_contract=$RD_OPTION_PROPOSE_CONTRACT \
+	-e propose_delay_max=$RD_OPTION_PROPOSE_DELAY_MAX \
+	-e propose_delay_min=$RD_OPTION_PROPOSE_DELAY_MIN \
+	$code_dir/ansible/update-autopropose.yml

@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+
+import sys, os
+import json
+import yaml
+
+GROUP_NAME = 'testnet'
+
+
+def rundeck_env(var, default=None):
+    try:
+        return os.environ['RD_OPTION_' + var.upper()]
+    except KeyError:
+        if default != None:
+            return default
+        else:
+            raise
+
+
+nodes = yaml.safe_load(sys.stdin.read())
+
+group = {'hosts': {}, 'vars': {}}
+group['vars']['ansible_become'] = True
+group['vars']['ansible_ssh_extra_args'] = '-o StrictHostKeyChecking=no'
+
+group['vars']['testnet_id'] = 'testnet-test'
+group['vars']['rnode_run_args'] = rundeck_env('RNODE_RUN_ARGS', '')
+group['vars']['rnode_java_opts'] = rundeck_env('RNODE_JAVA_OPTS', '')
+
+for key in [
+        'rnode_release',
+        'bonds_file_url',
+        'wallets_file_url',
+]:
+    group['vars'][key] = rundeck_env(key)
+
+base_bond = int(rundeck_env('BOND_BASE_AMOUNT'))
+group['vars']['testnet_bonds'] = []
+for i, n in enumerate(nodes):
+    bond = base_bond + 2**(i + 1)
+    entry = {'pub_key': n['pub_key'], 'bond_amount': bond}
+    group['vars']['testnet_bonds'].append(entry)
+
+restart_all   = rundeck_env('RESTART_ALL_NODES').lower()
+restart_hosts = rundeck_env('RESTART_SELECTED_NODES', '').strip().split()
+clean_all     = rundeck_env('CLEAN_ALL_NODES').lower()
+clean_hosts   = rundeck_env('CLEAN_SELECTED_NODES', '').strip().split()
+
+for n in nodes:
+    if restart_all == 'yes' or n['hostname'] in restart_hosts:
+        group['hosts'][n['hostname']] = {}
+        group['hosts'][n['hostname']]['is_bootstrap'] = n == nodes[0]
+        group['hosts'][n['hostname']]['rdoctor_apikey'] = n['rdoctor_apikey']
+        group['hosts'][n['hostname']]['clean_data'] = (
+            clean_all == 'yes' or n['hostname'] in clean_hosts)
+
+json.dump({GROUP_NAME: group}, sys.stdout, indent=4)

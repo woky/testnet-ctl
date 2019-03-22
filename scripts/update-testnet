@@ -1,0 +1,25 @@
+#!/bin/zsh -e
+
+code_dir=$0:h/..
+data_dir=$(mktemp -d)
+
+if [[ ! -d $code_dir/scripts/venv ]]; then
+	python3 -m venv $code_dir/scripts/venv
+	pip3 install -r $code_dir/scripts/requirements.txt
+fi
+#source $code_dir/scripts/venv/bin/activate
+
+$code_dir/scripts/rundeck-env-to-ansible-inv \
+	< $code_dir/nodes.yml \
+	> $data_dir/hosts.yml
+
+mkdir $data_dir/host-files
+$code_dir/scripts/create-node-files $data_dir/host-files \
+	< $code_dir/nodes.yml
+
+export PATH="/usr/local/bin:$PATH"
+ansible-playbook \
+	-i $data_dir/hosts.yml \
+	-e code_dir=$code_dir \
+	-e data_dir=$data_dir \
+	$code_dir/ansible/update-testnet.yml

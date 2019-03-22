@@ -1,0 +1,5 @@
+#!/bin/zsh -e
+cd $0:h
+tar -cf - -C upload-files . |\
+	arx tmpx - // ./setup-host |\
+	pssh -h hosts -l root -iI bash -s

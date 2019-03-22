@@ -1,0 +1,111 @@
+#!/bin/bash
+
+initial_delay=$((2*60))
+port_opts='--grpc-port 40401 --grpc-port-internal 40402'
+#validator_name=$(hostname | sed 's/\..*//')
+validator_name=$(cat /var/lib/rnode-static/hostname)
+
+if ! echo $propose_validators | sed 's/[, ]/\n/g' | grep -q $validator_name; then
+	exit 0
+fi
+
+if ! (( $propose_delay_min >= 0 )); then
+	echo "propose_delay_min is not a number >= 0" >&2
+	exit 1
+fi
+if ! (( $propose_delay_max >= 0 )); then
+	echo "propose_delay_max is not a number >= 0" >&2
+	exit 1
+fi
+if (( $propose_delay_min > $propose_delay_max )); then
+	echo "propose_delay_min > propose_delay_max" >&2
+	exit 1
+fi
+
+
+case $propose_mode in
+	random)
+		get_contract() {
+			ls examples/*.rho | sort -R | head -1
+		}
+		;;
+	single)
+		if [[ -z $propose_contract ]]; then
+			echo "propose_mode is 'single' but propose_contract is not set" >&2
+			exit 1
+		fi
+		if [[ ! -f examples/$propose_contract ]]; then
+			echo "propose_contract '$propose_contract' is not in examples/" >&2
+			exit 1
+		fi
+
+		get_contract() {
+			echo examples/$propose_contract
+		}
+		;;
+	minimal)
+		num=$(echo $validator_name | sed 's/[^0-9]//g')
+		if [[ -z $num ]]; then
+			echo "Validator name '$validator_name' has no numbers" >&2
+			exit 1
+		fi
+
+		echo "@$num!(Nil)" >/tmp/minimal.rho
+		get_contract() {
+			echo /tmp/minimal.rho
+		}
+		;;
+	disabled)
+		exit 0
+		;;
+	*)
+		echo "Unknown/empty propose_mode: '$propose_mode'" >&2
+		exit 1
+		;;
+esac
+
+log_cmd()
+{
+	echo "$@"
+	$@
+}
+
+cat <<EOF
+--------------------------------------------------
+Auto-propose parameters:
+  initial_delay        : $initial_dely
+  propose_mode         : $propose_mode
+  propose_contract     : $propose_contract
+  propose_delay_min    : $propose_delay_min
+  propose_delay_max    : $propose_delay_max
+--------------------------------------------------
+EOF
+
+echo "Sleeping for $initial_delay"
+sleep $initial_delay
+
+i=0
+
+while :
+do
+	echo "Iteration $((++i))"
+
+	random_delay=$(shuf -n1 -i$propose_delay_min-$propose_delay_max)
+	echo "Sleeping for $random_delay"
+	sleep $random_delay
+
+	contract=$(get_contract)
+
+	echo "Deploying contract $contract"
+	log_cmd ./bin/rnode $port_opts deploy \
+		--from 0x1 \
+		--phlo-limit 1000000000 \
+		--phlo-price 1 \
+		--nonce 0 \
+		$contract
+
+	if [[ $? -eq 0 ]]; then
+		echo "Proposing"
+		log_cmd ./bin/rnode $port_opts propose
+	fi
+done
